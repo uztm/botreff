@@ -2,6 +2,9 @@
 from typing import Optional, List, Dict, Any
 from .db import get_db
 import aiosqlite
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def create_user(
@@ -37,6 +40,7 @@ async def set_user_member(user_id: int):
             (user_id,)
         )
         await db.commit()
+        logger.info(f"User {user_id} marked as member")
 
 
 async def update_user_inviter(user_id: int, inviter_id: int):
@@ -60,7 +64,9 @@ async def add_referral(inviter_id: int, invited_id: int) -> bool:
             "SELECT id FROM referrals WHERE inviter_id = ? AND invited_id = ?",
             (inviter_id, invited_id)
         )
-        if await cur.fetchone():
+        existing = await cur.fetchone()
+        if existing:
+            logger.info(f"Referral already exists: inviter={inviter_id}, invited={invited_id}")
             return False
 
         # Add referral record
@@ -75,6 +81,19 @@ async def add_referral(inviter_id: int, invited_id: int) -> bool:
             (inviter_id,)
         )
         await db.commit()
+        
+        # Log the action
+        logger.info(f"Added referral: inviter={inviter_id}, invited={invited_id}")
+        
+        # Verify the count was updated
+        cur = await db.execute(
+            "SELECT referrals_count FROM users WHERE user_id = ?",
+            (inviter_id,)
+        )
+        row = await cur.fetchone()
+        new_count = row["referrals_count"] if row else 0
+        logger.info(f"Inviter {inviter_id} now has {new_count} referrals")
+        
         return True
 
 
@@ -86,7 +105,9 @@ async def referral_count(user_id: int) -> int:
             (user_id,)
         )
         row = await cur.fetchone()
-        return row["referrals_count"] if row else 0
+        count = row["referrals_count"] if row else 0
+        logger.info(f"User {user_id} has {count} referrals")
+        return count
 
 
 async def get_inviter(user_id: int) -> Optional[int]:
@@ -97,7 +118,9 @@ async def get_inviter(user_id: int) -> Optional[int]:
             (user_id,)
         )
         row = await cur.fetchone()
-        return row["invited_by"] if row else None
+        inviter = row["invited_by"] if row else None
+        logger.info(f"User {user_id} was invited by {inviter}")
+        return inviter
 
 
 async def list_users(limit: int = 1000) -> List[Dict[str, Any]]:

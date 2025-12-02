@@ -71,13 +71,17 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
     
     # Try to register referral if user came via referral link
     if ref:
+        logger.info(f"User {user_id} came via referral link from {ref}")
         inviter_id, added = await referral_service.try_register_referral(user_id)
+        logger.info(f"try_register_referral returned: inviter_id={inviter_id}, added={added}")
+        
         if added and inviter_id:
             try:
                 # Get the invited user's info
                 invited_user = await bot.get_chat(user_id)
                 # Get updated referral count AFTER adding
                 ref_count = await models.referral_count(inviter_id)
+                logger.info(f"Sending notification to {inviter_id} with count {ref_count}")
                 
                 await bot.send_message(
                     inviter_id,
@@ -91,6 +95,8 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
                     await send_private_group_access(bot, inviter_id)
             except Exception as e:
                 logger.error(f"Error notifying inviter {inviter_id}: {e}")
+        else:
+            logger.warning(f"Referral not added: inviter_id={inviter_id}, added={added}")
 
     # Check user's own referral count
     user_ref_count = await models.referral_count(user_id)
@@ -145,14 +151,19 @@ async def check_subscription_callback(callback: types.CallbackQuery, bot: Bot):
     
     # Check if user came via referral
     inviter_id = await models.get_inviter(user.id)
+    logger.info(f"Callback: User {user.id} has inviter: {inviter_id}")
+    
     if inviter_id:
         inviter_id_result, added = await referral_service.try_register_referral(user.id)
+        logger.info(f"Callback: try_register_referral returned: inviter_id={inviter_id_result}, added={added}")
+        
         if added and inviter_id_result:
             try:
                 # Get the invited user's info
                 invited_user = await bot.get_chat(user.id)
                 # Get updated referral count AFTER adding
                 ref_count = await models.referral_count(inviter_id_result)
+                logger.info(f"Callback: Sending notification to {inviter_id_result} with count {ref_count}")
                 
                 await bot.send_message(
                     inviter_id_result,
@@ -166,6 +177,8 @@ async def check_subscription_callback(callback: types.CallbackQuery, bot: Bot):
                     await send_private_group_access(bot, inviter_id_result)
             except Exception as e:
                 logger.error(f"Error notifying inviter {inviter_id_result}: {e}")
+        else:
+            logger.warning(f"Callback: Referral not added: inviter_id={inviter_id_result}, added={added}")
 
     # Check user's referral count
     user_ref_count = await models.referral_count(user.id)
