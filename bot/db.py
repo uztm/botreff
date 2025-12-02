@@ -2,6 +2,7 @@ import aiosqlite
 from pathlib import Path
 from .config import settings
 import asyncio
+from contextlib import asynccontextmanager
 
 DB_PATH = settings.DATABASE_PATH
 DB_LOCK = asyncio.Lock()
@@ -36,8 +37,15 @@ async def init_db():
             await db.commit()
 
 
+@asynccontextmanager
 async def get_db():
-    # Altdan connection qaytaradi har safar query uchun
+    """
+    Async context manager that returns a database connection.
+    Usage: async with get_db() as db:
+    """
     conn = await aiosqlite.connect(DB_PATH)
     conn.row_factory = aiosqlite.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        await conn.close()
