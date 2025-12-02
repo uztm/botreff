@@ -1,7 +1,7 @@
 # bot/handlers/join_request.py
 from aiogram import Router, types, Bot
 from aiogram.filters import ChatMemberUpdatedFilter, MEMBER, KICKED
-from aiogram.types import ChatMemberUpdated
+from aiogram.types import ChatJoinRequest
 from .. import models
 import logging
 
@@ -15,7 +15,7 @@ async def handle_join_request(chat_join_request: types.ChatJoinRequest, bot: Bot
     Handle join requests to the private group.
     Auto-approve users who have 7+ referrals.
     """
-    user_id = chat_join_request.from_user.user_id
+    user_id = chat_join_request.from_user.id  # Changed from user_id to id
     chat_id = chat_join_request.chat.id
     
     logger.info(f"Join request from user {user_id} to chat {chat_id}")

@@ -24,16 +24,16 @@ async def ensure_user_registered(
         await models.update_user_inviter(user_id, inviter)
 
 
-async def try_register_referral(candidate_user_id: int) -> Tuple[Optional[int], bool]:
+async def try_register_referral(candidate_user_id: int) -> Tuple[Optional[int], bool, int]:
     """
     If candidate_user has an inviter, add referral record and increment count.
     
     Returns:
-        Tuple of (inviter_id, was_added)
+        Tuple of (inviter_id, was_added, new_count)
     """
     inviter_id = await models.get_inviter(candidate_user_id)
     if not inviter_id:
-        return None, False
+        return None, False, 0
 
-    added = await models.add_referral(inviter_id, candidate_user_id)
-    return inviter_id, added
+    was_added, new_count = await models.add_referral(inviter_id, candidate_user_id)
+    return inviter_id, was_added, new_count

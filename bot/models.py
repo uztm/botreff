@@ -1,5 +1,5 @@
 # bot/models.py
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from .db import get_db
 import aiosqlite
 import logging
@@ -16,20 +16,49 @@ async def create_user(
     """Create a new user or ignore if already exists"""
     async with get_db() as db:
         await db.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, full_name, invited_by) VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO users (user_id, username, full_name, invited_by, referrals_count) VALUES (?, ?, ?, ?, 0)",
             (user_id, username, full_name, invited_by)
         )
         await db.commit()
 
 
 async def get_user(user_id: int) -> Optional[aiosqlite.Row]:
-    """Get user by ID"""
+    """Get user by ID with verified referral count"""
     async with get_db() as db:
         cur = await db.execute(
             "SELECT * FROM users WHERE user_id = ?", 
             (user_id,)
         )
-        return await cur.fetchone()
+        row = await cur.fetchone()
+        
+        if row:
+            # Verify referral count matches actual referrals
+            stored_count = row["referrals_count"] if row["referrals_count"] is not None else 0
+            
+            cur2 = await db.execute(
+                "SELECT COUNT(*) as actual FROM referrals WHERE inviter_id = ?",
+                (user_id,)
+            )
+            actual_row = await cur2.fetchone()
+            actual_count = actual_row["actual"] if actual_row else 0
+            
+            if stored_count != actual_count:
+                logger.warning(f"User {user_id} count mismatch: stored={stored_count}, actual={actual_count}. Fixing...")
+                # Fix the count in the database
+                await db.execute(
+                    "UPDATE users SET referrals_count = ? WHERE user_id = ?",
+                    (actual_count, user_id)
+                )
+                await db.commit()
+                
+                # Re-fetch the updated row
+                cur3 = await db.execute(
+                    "SELECT * FROM users WHERE user_id = ?", 
+                    (user_id,)
+                )
+                row = await cur3.fetchone()
+        
+        return row
 
 
 async def set_user_member(user_id: int):
@@ -53,10 +82,10 @@ async def update_user_inviter(user_id: int, inviter_id: int):
         await db.commit()
 
 
-async def add_referral(inviter_id: int, invited_id: int) -> bool:
+async def add_referral(inviter_id: int, invited_id: int) -> Tuple[bool, int]:
     """
     Add a referral record and increment inviter's referral count.
-    Returns True if added, False if already exists.
+    Returns (was_added, new_count).
     """
     async with get_db() as db:
         # Check if referral already exists
@@ -67,7 +96,14 @@ async def add_referral(inviter_id: int, invited_id: int) -> bool:
         existing = await cur.fetchone()
         if existing:
             logger.info(f"Referral already exists: inviter={inviter_id}, invited={invited_id}")
-            return False
+            # Get current count
+            cur = await db.execute(
+                "SELECT referrals_count FROM users WHERE user_id = ?",
+                (inviter_id,)
+            )
+            row = await cur.fetchone()
+            current_count = row["referrals_count"] if row and row["referrals_count"] is not None else 0
+            return False, current_count
 
         # Add referral record
         await db.execute(
@@ -75,39 +111,56 @@ async def add_referral(inviter_id: int, invited_id: int) -> bool:
             (inviter_id, invited_id)
         )
         
-        # Increment inviter's referral count
-        await db.execute(
-            "UPDATE users SET referrals_count = referrals_count + 1 WHERE user_id = ?",
-            (inviter_id,)
-        )
-        await db.commit()
-        
-        # Log the action
-        logger.info(f"Added referral: inviter={inviter_id}, invited={invited_id}")
-        
-        # Verify the count was updated
+        # Get current count and increment
         cur = await db.execute(
             "SELECT referrals_count FROM users WHERE user_id = ?",
             (inviter_id,)
         )
         row = await cur.fetchone()
-        new_count = row["referrals_count"] if row else 0
-        logger.info(f"Inviter {inviter_id} now has {new_count} referrals")
+        current_count = row["referrals_count"] if row and row["referrals_count"] is not None else 0
+        new_count = current_count + 1
         
-        return True
+        # Update with new count
+        await db.execute(
+            "UPDATE users SET referrals_count = ? WHERE user_id = ?",
+            (new_count, inviter_id)
+        )
+        await db.commit()
+        
+        # Log the action
+        logger.info(f"Added referral: inviter={inviter_id}, invited={invited_id}")
+        logger.info(f"Inviter {inviter_id} count updated from {current_count} to {new_count}")
+        
+        return True, new_count
 
 
 async def referral_count(user_id: int) -> int:
     """Get referral count for a user"""
     async with get_db() as db:
+        # Force reading the latest data
         cur = await db.execute(
             "SELECT referrals_count FROM users WHERE user_id = ?", 
             (user_id,)
         )
         row = await cur.fetchone()
-        count = row["referrals_count"] if row else 0
-        logger.info(f"User {user_id} has {count} referrals")
-        return count
+        
+        # If count is None or seems wrong, recalculate from referrals table
+        stored_count = row["referrals_count"] if row and row["referrals_count"] is not None else 0
+        
+        # Verify against actual referrals (for debugging)
+        cur2 = await db.execute(
+            "SELECT COUNT(*) as actual FROM referrals WHERE inviter_id = ?",
+            (user_id,)
+        )
+        actual_row = await cur2.fetchone()
+        actual_count = actual_row["actual"] if actual_row else 0
+        
+        if stored_count != actual_count:
+            logger.warning(f"User {user_id} count mismatch: stored={stored_count}, actual={actual_count}. Using actual.")
+            return actual_count
+        
+        logger.info(f"User {user_id} has {stored_count} referrals")
+        return stored_count
 
 
 async def get_inviter(user_id: int) -> Optional[int]:

@@ -15,5 +15,6 @@ class Settings(BaseSettings):
     ADMIN_IDS: List[int]
     ADMIN_PANEL_TOKEN: str
     DATABASE_PATH: str
+    PRIVATE_GROUP_LINK: str
 
 settings = Settings()

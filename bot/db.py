@@ -32,6 +32,9 @@ async def init_db():
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     async with DB_LOCK:
         async with aiosqlite.connect(DB_PATH) as db:
+            # Enable WAL mode for better concurrency
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA synchronous=NORMAL")
             await db.execute(CREATE_USERS)
             await db.execute(CREATE_REFERRALS)
             await db.commit()
@@ -45,6 +48,8 @@ async def get_db():
     """
     conn = await aiosqlite.connect(DB_PATH)
     conn.row_factory = aiosqlite.Row
+    # Set isolation level to ensure we read committed data
+    await conn.execute("PRAGMA read_uncommitted=0")
     try:
         yield conn
     finally:

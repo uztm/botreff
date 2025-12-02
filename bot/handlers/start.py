@@ -55,7 +55,7 @@ async def start_handler(message: types.Message, bot: Bot):
 
     if missing:
         await message.answer(
-            "📢 Iltimos, avval quyidagi kanallarga obuna bo'ling:\n\n"
+            "📢 \"Uyg'onamiz ummat qizlari\" 9-mavsumda qatnashish uchun quyidagi sahifalarimizga obuna bo'ling!\n\n"
             "Obuna bo'lgandan keyin '✅ Obunani tekshirish' tugmasini bosing.",
             reply_markup=channels_keyboard()
         )
@@ -72,22 +72,22 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
     # Try to register referral if user came via referral link
     if ref:
         logger.info(f"User {user_id} came via referral link from {ref}")
-        inviter_id, added = await referral_service.try_register_referral(user_id)
-        logger.info(f"try_register_referral returned: inviter_id={inviter_id}, added={added}")
+        inviter_id, added, ref_count = await referral_service.try_register_referral(user_id)
+        logger.info(f"try_register_referral returned: inviter_id={inviter_id}, added={added}, count={ref_count}")
         
         if added and inviter_id:
             try:
                 # Get the invited user's info
                 invited_user = await bot.get_chat(user_id)
-                # Get updated referral count AFTER adding
-                ref_count = await models.referral_count(inviter_id)
                 logger.info(f"Sending notification to {inviter_id} with count {ref_count}")
                 
                 await bot.send_message(
                     inviter_id,
                     f"🎉 Yangi referal!\n\n"
-                    f"👤 {invited_user.first_name} sizning havolangiz orqali qo'shildi!\n\n"
+                    f"👤 {invited_user.first_name} sizning havolangiz orqali qo'shildi! \n\n Harakat qilishni davom ettiring. Albatta, bu marafonda qatnasha olasiz 😌\n\n"
                     f"📊 Sizning referallaringiz: {ref_count}/7"
+                    f"Qatnashish uchun yana bir yo'lingiz bor. Batafsil ma'lumot uchun: \n\n"
+                    f"Referallarsiz davom etish tugmasini bosing!"
                 )
                 
                 # Check if inviter reached 7 referrals
@@ -109,7 +109,7 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
         ref_link = f"https://t.me/{settings.BOT_USERNAME}?start={user_id}"
         await message.answer(
             f"✅ Ajoyib! Siz kanallarga muvaffaqiyatli obuna bo'ldingiz!\n\n"
-            f"🎯 Endi yopiq guruhga kirish uchun 7 ta do'stingizni taklif qiling.\n\n"
+            f"🎯 Marafonda qatnashish uchun birinchi qadamni bajardingiz. \n\nEndi 7ta do'stingizga ham quyidagi havolani ulashing va yopiq kanalimiz uchun havolani qo'lga kiriting.\n\n"
             f"📊 Sizning referallaringiz: {user_ref_count}/7\n\n"
             f"🔗 Sizning referal havolangiz:\n{ref_link}\n\n"
             f"💡 Havolani do'stlaringizga yuboring va ular botni boshlashini kuting!"
@@ -126,6 +126,7 @@ async def send_private_group_access(bot: Bot, user_id: int):
         "🌟 Siz 7 ta referal to'pladingiz va yopiq guruhga kirish huquqini qo'lga kiritdingiz!\n\n"
         "👇 Quyidagi tugmani bosib guruhga qo'shilish so'rovini yuboring.\n"
         "Bot avtomatik ravishda sizni tasdiqlaydi.",
+        "15kunlik marafonimizda qatnashing!",
         reply_markup=private_group_keyboard(private_group_link)
     )
 
@@ -154,15 +155,13 @@ async def check_subscription_callback(callback: types.CallbackQuery, bot: Bot):
     logger.info(f"Callback: User {user.id} has inviter: {inviter_id}")
     
     if inviter_id:
-        inviter_id_result, added = await referral_service.try_register_referral(user.id)
-        logger.info(f"Callback: try_register_referral returned: inviter_id={inviter_id_result}, added={added}")
+        inviter_id_result, added, ref_count = await referral_service.try_register_referral(user.id)
+        logger.info(f"Callback: try_register_referral returned: inviter_id={inviter_id_result}, added={added}, count={ref_count}")
         
         if added and inviter_id_result:
             try:
                 # Get the invited user's info
                 invited_user = await bot.get_chat(user.id)
-                # Get updated referral count AFTER adding
-                ref_count = await models.referral_count(inviter_id_result)
                 logger.info(f"Callback: Sending notification to {inviter_id_result} with count {ref_count}")
                 
                 await bot.send_message(
@@ -218,7 +217,8 @@ async def my_referrals_handler(message: types.Message):
         )
         return
 
-    referrals = row["referrals_count"]
+    referrals = row["referrals_count"] if row["referrals_count"] is not None else 0
+    logger.info(f"User {user.id} referrals from DB: {referrals}, row data: {dict(row)}")
     ref_link = f"https://t.me/{settings.BOT_USERNAME}?start={user.id}"
     
     if referrals >= 7:

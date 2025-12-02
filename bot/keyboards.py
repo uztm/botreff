@@ -59,7 +59,7 @@ def admin_contact_keyboard():
     buttons = [
         [InlineKeyboardButton(
             text="📞 Admin bilan bog'lanish", 
-            url="https://t.me/your_admin"
+            url="https://t.me/uygonamiz_admin"
         )]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
