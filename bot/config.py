@@ -1,5 +1,5 @@
 # bot/config.py
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -15,6 +15,6 @@ class Settings(BaseSettings):
     ADMIN_IDS: List[int]
     ADMIN_PANEL_TOKEN: str
     DATABASE_PATH: str
-    PRIVATE_GROUP_LINK: str
+    PRIVATE_GROUP_LINK: Optional[str] = None
 
 settings = Settings()

@@ -1,4 +1,23 @@
-# bot/handlers/start.py
+# bot/config.py
+from typing import List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
+
+    BOT_TOKEN: str
+    CHANNEL_1: str
+    CHANNEL_2: str
+    BOT_USERNAME: str
+    ADMIN_IDS: List[int]
+    ADMIN_PANEL_TOKEN: str
+    DATABASE_PATH: str
+    PRIVATE_GROUP_LINK: Optional[str] = None
+
+settings = Settings()
 from aiogram import Router, types, Bot, F
 from aiogram.filters import CommandStart
 from ..services.subscription import check_subscriptions
@@ -55,7 +74,7 @@ async def start_handler(message: types.Message, bot: Bot):
 
     if missing:
         await message.answer(
-            "📢 \"Uyg'onamiz ummat qizlari\" 9-mavsumda qatnashish uchun quyidagi sahifalarimizga obuna bo'ling!\n\n"
+            "📢 Iltimos, avval quyidagi kanallarga obuna bo'ling:\n\n"
             "Obuna bo'lgandan keyin '✅ Obunani tekshirish' tugmasini bosing.",
             reply_markup=channels_keyboard()
         )
@@ -84,10 +103,8 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
                 await bot.send_message(
                     inviter_id,
                     f"🎉 Yangi referal!\n\n"
-                    f"👤 {invited_user.first_name} sizning havolangiz orqali qo'shildi! \n\n Harakat qilishni davom ettiring. Albatta, bu marafonda qatnasha olasiz 😌\n\n"
+                    f"👤 {invited_user.first_name} sizning havolangiz orqali qo'shildi!\n\n"
                     f"📊 Sizning referallaringiz: {ref_count}/7"
-                    f"Qatnashish uchun yana bir yo'lingiz bor. Batafsil ma'lumot uchun: \n\n"
-                    f"Referallarsiz davom etish tugmasini bosing!"
                 )
                 
                 # Check if inviter reached 7 referrals
@@ -109,7 +126,7 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
         ref_link = f"https://t.me/{settings.BOT_USERNAME}?start={user_id}"
         await message.answer(
             f"✅ Ajoyib! Siz kanallarga muvaffaqiyatli obuna bo'ldingiz!\n\n"
-            f"🎯 Marafonda qatnashish uchun birinchi qadamni bajardingiz. \n\nEndi 7ta do'stingizga ham quyidagi havolani ulashing va yopiq kanalimiz uchun havolani qo'lga kiriting.\n\n"
+            f"🎯 Endi yopiq guruhga kirish uchun 7 ta do'stingizni taklif qiling.\n\n"
             f"📊 Sizning referallaringiz: {user_ref_count}/7\n\n"
             f"🔗 Sizning referal havolangiz:\n{ref_link}\n\n"
             f"💡 Havolani do'stlaringizga yuboring va ular botni boshlashini kuting!"
@@ -118,17 +135,37 @@ async def show_subscribed_message(message: types.Message, bot: Bot, user_id: int
 
 async def send_private_group_access(bot: Bot, user_id: int):
     """Send private group link to user who has 7 referrals"""
-    private_group_link = settings.PRIVATE_GROUP_LINK
-    
-    await bot.send_message(
-        user_id,
-        "🎊 TABRIKLAYMIZ! 🎊\n\n"
-        "🌟 Siz 7 ta referal to'pladingiz va yopiq guruhga kirish huquqini qo'lga kiritdingiz!\n\n"
-        "👇 Quyidagi tugmani bosib guruhga qo'shilish so'rovini yuboring.\n"
-        "Bot avtomatik ravishda sizni tasdiqlaydi.",
-        "15kunlik marafonimizda qatnashing!",
-        reply_markup=private_group_keyboard(private_group_link)
-    )
+    try:
+        private_group_link = settings.PRIVATE_GROUP_LINK
+        
+        await bot.send_message(
+            user_id,
+            "🎊 TABRIKLAYMIZ! 🎊\n\n"
+            "🌟 Siz 7 ta referal to'pladingiz va yopiq guruhga kirish huquqini qo'lga kiritdingiz!\n\n"
+            "👇 Quyidagi tugmani bosib guruhga qo'shilish so'rovini yuboring.\n"
+            "Bot avtomatik ravishda sizni tasdiqlaydi.",
+            reply_markup=private_group_keyboard(private_group_link)
+        )
+    except AttributeError:
+        # PRIVATE_GROUP_LINK not set in config
+        logger.error("PRIVATE_GROUP_LINK not configured in settings")
+        await bot.send_message(
+            user_id,
+            "🎊 TABRIKLAYMIZ! 🎊\n\n"
+            "🌟 Siz 7 ta referal to'pladingiz va yopiq guruhga kirish huquqini qo'lga kiritdingiz!\n\n"
+            "📞 Admin bilan bog'laning, sizga guruh havolasi beriladi.",
+            reply_markup=admin_contact_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Error sending private group access to {user_id}: {e}")
+        # Send a fallback message
+        await bot.send_message(
+            user_id,
+            "🎊 TABRIKLAYMIZ! 🎊\n\n"
+            "🌟 Siz 7 ta referal to'pladingiz!\n\n"
+            "📞 Admin bilan bog'laning.",
+            reply_markup=admin_contact_keyboard()
+        )
 
 
 @router.callback_query(F.data == "check_subscription")
